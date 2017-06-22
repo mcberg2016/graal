@@ -240,7 +240,7 @@ public abstract class BasePhase<C> implements PhaseSizeContract {
     @SuppressWarnings("try")
     private boolean shouldDump(StructuredGraph graph, C context) {
         String phaseChange = GraalDebugConfig.Options.DumpOnPhaseChange.getValue(graph.getOptions());
-        if (phaseChange != null && getClass().getSimpleName().contains(phaseChange)) {
+        if (phaseChange != null && Pattern.matches(phaseChange, getClass().getSimpleName())) {
             StructuredGraph graphCopy = (StructuredGraph) graph.copy();
             GraphChangeListener listener = new GraphChangeListener(graphCopy);
             try (NodeEventScope s = graphCopy.trackNodeEvents(listener)) {
