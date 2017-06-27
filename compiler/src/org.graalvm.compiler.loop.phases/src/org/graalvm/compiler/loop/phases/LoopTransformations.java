@@ -30,7 +30,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import org.graalvm.compiler.core.common.NumUtil;
 import org.graalvm.compiler.core.common.RetryableBailoutException;
 import org.graalvm.compiler.core.common.type.Stamp;
 import org.graalvm.compiler.debug.Debug;
@@ -71,8 +70,7 @@ import org.graalvm.compiler.nodes.calc.BinaryArithmeticNode;
 import org.graalvm.compiler.nodes.calc.CompareNode;
 import org.graalvm.compiler.nodes.calc.ConditionalNode;
 import org.graalvm.compiler.nodes.calc.IntegerLessThanNode;
-import org.graalvm.compiler.nodes.calc.LeftShiftNode;
-import org.graalvm.compiler.nodes.calc.RightShiftNode;
+import org.graalvm.compiler.nodes.calc.SubNode;
 import org.graalvm.compiler.nodes.extended.SwitchNode;
 import org.graalvm.compiler.nodes.util.GraphUtil;
 import org.graalvm.compiler.phases.common.CanonicalizerPhase;
@@ -244,13 +242,11 @@ public abstract class LoopTransformations {
             int unrollFactor = mainLoopBegin.getUnrollFactor();
             // First restore the old pattern of the loop exit condition so we can update it one way
             if (unrollFactor > 1) {
-                if (compareBound instanceof LeftShiftNode) {
-                    LeftShiftNode left = (LeftShiftNode) compareBound;
-                    RightShiftNode right = (RightShiftNode) left.getX();
-                    ValueNode oldcompareBound = right.getX();
-                    compareNode.replaceFirstInput(left, oldcompareBound);
-                    left.safeDelete();
-                    right.safeDelete();
+                if (compareBound instanceof SubNode) {
+                    SubNode newLimit = (SubNode) compareBound;
+                    ValueNode oldcompareBound = newLimit.getX();
+                    compareNode.replaceFirstInput(newLimit, oldcompareBound);
+                    newLimit.safeDelete();
                     compareBound = oldcompareBound;
                 } else if (compareBound instanceof AddNode) {
                     AddNode newLimit = (AddNode) compareBound;
@@ -275,10 +271,10 @@ public abstract class LoopTransformations {
                 // Now use the current unrollFactor to update the exit condition to power of two
                 if (unrollFactor > 1) {
                     if (iv.direction() == Direction.Up) {
-                        ConstantNode shiftVal = graph.unique(ConstantNode.forIntegerStamp(strideStamp, NumUtil.log2Ceil(unrollFactor)));
-                        RightShiftNode right = graph.addWithoutUnique(new RightShiftNode(compareBound, shiftVal));
-                        LeftShiftNode left = graph.addWithoutUnique(new LeftShiftNode(right, shiftVal));
-                        compareNode.replaceFirstInput(compareBound, left);
+                        int modulas = (unrollFactor - 1);
+                        ConstantNode aboveVal = graph.unique(ConstantNode.forIntegerStamp(strideStamp, modulas));
+                        ValueNode newLimit = graph.addWithoutUnique(new SubNode(compareBound, aboveVal));
+                        compareNode.replaceFirstInput(compareBound, newLimit);
                     } else if (iv.direction() == Direction.Down) {
                         int modulas = (unrollFactor - 1);
                         ConstantNode aboveVal = graph.unique(ConstantNode.forIntegerStamp(strideStamp, modulas));
