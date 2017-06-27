@@ -78,7 +78,7 @@ public class AMD64AddressNode extends AddressNode implements Simplifiable, LIRLo
                 PhiNode phi = (PhiNode) valX;
                 if (phi.merge() instanceof LoopBeginNode) {
                     LoopBeginNode loopNode = (LoopBeginNode) phi.merge();
-                    if (loopNode.isMainLoop()) {
+                    if (!loopNode.isSimpleLoop()) {
                         ValueNode valY = add.getY();
                         if (valY instanceof ConstantNode) {
                             int addBy = valY.asJavaConstant().asInt();

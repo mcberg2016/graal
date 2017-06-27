@@ -25,7 +25,6 @@ package org.graalvm.compiler.loop.test;
 import org.graalvm.compiler.core.test.GraalCompilerTest;
 import org.graalvm.compiler.nodes.LoopBeginNode;
 import org.graalvm.compiler.nodes.StructuredGraph;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class LoopPartialUnrollTest extends GraalCompilerTest {
@@ -276,7 +275,6 @@ public class LoopPartialUnrollTest extends GraalCompilerTest {
         return A;
     }
 
-    @Ignore
     @Test
     public void testSOR() {
         int N = 250;
