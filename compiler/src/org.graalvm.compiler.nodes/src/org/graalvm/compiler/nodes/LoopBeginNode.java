@@ -79,6 +79,7 @@ public final class LoopBeginNode extends AbstractMergeNode implements IterableNo
     }
 
     public void setPreLoop() {
+        assert isSimpleLoop();
         loopType = LoopType.PRE_LOOP;
     }
 
@@ -87,6 +88,7 @@ public final class LoopBeginNode extends AbstractMergeNode implements IterableNo
     }
 
     public void setMainLoop() {
+        assert isSimpleLoop();
         loopType = LoopType.MAIN_LOOP;
     }
 
@@ -95,6 +97,7 @@ public final class LoopBeginNode extends AbstractMergeNode implements IterableNo
     }
 
     public void setPostLoop() {
+        assert isSimpleLoop();
         loopType = LoopType.POST_LOOP;
     }
 

@@ -36,7 +36,6 @@ import org.graalvm.compiler.nodes.LoopBeginNode;
 import org.graalvm.compiler.nodes.PhiNode;
 import org.graalvm.compiler.nodes.ValueNode;
 import org.graalvm.compiler.nodes.calc.AddNode;
-import org.graalvm.compiler.nodes.calc.SubNode;
 import org.graalvm.compiler.nodes.memory.address.AddressNode;
 import org.graalvm.compiler.nodes.spi.LIRLowerable;
 import org.graalvm.compiler.nodes.spi.NodeLIRBuilderTool;
@@ -84,24 +83,6 @@ public class AMD64AddressNode extends AddressNode implements Simplifiable, LIRLo
                         if (valY instanceof ConstantNode) {
                             int addBy = valY.asJavaConstant().asInt();
                             displacement = displacement + scale.value * addBy;
-                            replaceFirstInput(index, phi);
-                            tool.addToWorkList(index);
-                        }
-                    }
-                }
-            }
-        } else if (index instanceof SubNode) {
-            SubNode sub = (SubNode) index;
-            ValueNode valX = sub.getX();
-            if (valX instanceof PhiNode) {
-                PhiNode phi = (PhiNode) valX;
-                if (phi.merge() instanceof LoopBeginNode) {
-                    LoopBeginNode loopNode = (LoopBeginNode) phi.merge();
-                    if (loopNode.isMainLoop()) {
-                        ValueNode valY = sub.getY();
-                        if (valY instanceof ConstantNode) {
-                            int subBy = valY.asJavaConstant().asInt();
-                            displacement = displacement + scale.value * subBy;
                             replaceFirstInput(index, phi);
                             tool.addToWorkList(index);
                         }

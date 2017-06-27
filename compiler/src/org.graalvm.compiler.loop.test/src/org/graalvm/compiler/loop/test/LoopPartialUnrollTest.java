@@ -25,6 +25,7 @@ package org.graalvm.compiler.loop.test;
 import org.graalvm.compiler.core.test.GraalCompilerTest;
 import org.graalvm.compiler.nodes.LoopBeginNode;
 import org.graalvm.compiler.nodes.StructuredGraph;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class LoopPartialUnrollTest extends GraalCompilerTest {
@@ -253,5 +254,39 @@ public class LoopPartialUnrollTest extends GraalCompilerTest {
         test("testComplexSnippet", 10);
         test("testComplexSnippet", 100);
         test("testComplexSnippet", 1000);
+    }
+
+    public final double[] execute(double[] Gi) {
+        int N = Gi.length;
+
+        int m1 = N - 1;
+        for (int i = 1; i < m1; i++) {
+            for (int j = 1; j < m1; j++) {
+                Gi[j] = Gi[j + 1];
+            }
+        }
+        return Gi;
+    }
+
+    public static double[] getDoubles(int N) {
+        double A[] = new double[N];
+        for (int i = 0; i < A.length; i++) {
+            A[i] = 1;
+        }
+        return A;
+    }
+
+    @Ignore
+    @Test
+    public void testSOR() {
+        int N = 250;
+        for (int i = 0; i < 10; i++) {
+            execute(getDoubles(N));
+        }
+        for (N = 250; N >= 3; N--) {
+
+            final int Nfinal = N;
+            test("execute", supply(() -> getDoubles(Nfinal)));
+        }
     }
 }
