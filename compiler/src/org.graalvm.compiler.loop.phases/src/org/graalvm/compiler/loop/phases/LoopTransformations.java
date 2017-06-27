@@ -157,6 +157,7 @@ public abstract class LoopTransformations {
     }
 
     public static boolean partialUnroll(LoopEx loop, StructuredGraph graph) {
+        assert loop.loopBegin().isMainLoop();
         Debug.log("LoopPartialUnroll %s", loop);
         boolean changed = false;
         CountedLoopInfo mainCounted = loop.counted();
@@ -515,18 +516,14 @@ public abstract class LoopTransformations {
             AbstractMergeNode postMergeNode = postEndNode.merge();
             LoopExitNode postLoopExitNode = getSingleExitFromLoop(postLoopBegin);
             postMergeNode.clearEnds();
-            if (postMergeNode.usages().isEmpty()) {
-                postMergeNode.safeDelete();
-            } else {
-                // Duplicate may have moved some uses onto created merges
-                postMergeNode.prepareDelete(postLoopExitNode);
-                postMergeNode.safeDelete();
-            }
+            // Duplicate may have moved some uses onto created merges
+            postMergeNode.prepareDelete(postLoopExitNode);
+            postMergeNode.safeDelete();
 
             // Update the main loop phi initialization to carry from the pre loop
             for (PhiNode prePhiNode : preLoopBegin.phis()) {
                 PhiNode mainPhiNode = mainLoop.getDuplicatedNode(prePhiNode);
-                mainPhiNode.initializeValueAt(0, prePhiNode);
+                mainPhiNode.setValueAt(0, prePhiNode);
             }
 
             // Process the main loop and update loop with effect-less guards
@@ -538,12 +535,8 @@ public abstract class LoopTransformations {
             LoopExitNode mainLoopExitNode = getSingleExitFromLoop(mainLoopBegin);
             mainLoopExitNode.setNext(mainLandingNode);
             mainMergeNode.clearEnds();
-            if (mainMergeNode.usages().isEmpty()) {
-                mainMergeNode.safeDelete();
-            } else {
-                mainMergeNode.prepareDelete(mainLandingNode);
-                mainMergeNode.safeDelete();
-            }
+            mainMergeNode.prepareDelete(mainLandingNode);
+            mainMergeNode.safeDelete();
             preLoopExitNode.setNext(mainLoopBegin.forwardEnd());
 
             // Add and update any phi edges as per merge usage as needed and update usages
@@ -567,61 +560,47 @@ public abstract class LoopTransformations {
         Debug.dump(Debug.DETAILED_LEVEL, graph, "InsertPrePostLoops %s", loop);
     }
 
-    private static void processPreLoopPhis(LoopEx loop, LoopFragmentWhole mainLoop, LoopFragmentWhole postLoop) {
+    private static void processPreLoopPhis(LoopEx preLoop, LoopFragmentWhole mainLoop, LoopFragmentWhole postLoop) {
         // process phis for the post loop
-        LoopBeginNode preLoopBegin = loop.loopBegin();
+        LoopBeginNode preLoopBegin = preLoop.loopBegin();
         for (PhiNode prePhiNode : preLoopBegin.phis()) {
             PhiNode postPhiNode = postLoop.getDuplicatedNode(prePhiNode);
             PhiNode mainPhiNode = mainLoop.getDuplicatedNode(prePhiNode);
-            postPhiNode.initializeValueAt(0, mainPhiNode);
+            postPhiNode.setValueAt(0, mainPhiNode);
 
             // Build a work list to update the pre loop phis to the post loops phis
-            List<Node> workList = new ArrayList<>();
-            List<Node> escapeList = new ArrayList<>();
-            for (Node usage : prePhiNode.usages()) {
+            for (Node usage : prePhiNode.usages().snapshot()) {
                 if (usage == mainPhiNode) {
                     continue;
                 }
-                if (loop.isOutsideLoop(usage)) {
-                    workList.add(usage);
-                } else {
-                    for (Node escapeValue : usage.usages()) {
-                        if (loop.isOutsideLoop(escapeValue)) {
-                            if (escapeList.contains(usage) == false) {
-                                escapeList.add(usage);
-                            }
-                        }
-                    }
+                if (preLoop.isOutsideLoop(usage)) {
+                    usage.replaceFirstInput(prePhiNode, postPhiNode);
                 }
             }
-            for (Node usage : escapeList) {
-                List<Node> escapeValues = new ArrayList<>();
-                for (Node escapeValue : usage.usages()) {
-                    if (loop.isOutsideLoop(escapeValue)) {
-                        escapeValues.add(escapeValue);
-                    }
+        }
+        for (Node node : preLoop.inside().nodes()) {
+            for (Node externalUsage : node.usages().snapshot()) {
+                if (preLoop.isOutsideLoop(externalUsage)) {
+                    Node postUsage = postLoop.getDuplicatedNode(node);
+                    assert postUsage != null;
+                    externalUsage.replaceFirstInput(node, postUsage);
                 }
-                Node postUsage = postLoop.getDuplicatedNode(usage);
-                for (Node escapeValue : escapeValues) {
-                    escapeValue.replaceFirstInput(usage, postUsage);
-                }
-            }
-            for (Node node : workList) {
-                node.replaceFirstInput(prePhiNode, postPhiNode);
             }
         }
     }
 
     private static LoopExitNode getSingleExitFromLoop(LoopBeginNode curLoopBegin) {
+        assert curLoopBegin.loopExits().count() == 1;
         return curLoopBegin.loopExits().first();
     }
 
     private static LoopEndNode getSingleLoopEndFromLoop(LoopBeginNode curLoopBegin) {
+        assert curLoopBegin.loopEnds().count() == 1;
         return curLoopBegin.loopEnds().first();
     }
 
     private static EndNode getSingleEndFromLoop(LoopBeginNode curLoopBegin) {
-        FixedWithNextNode node = curLoopBegin.loopExits().first();
+        FixedWithNextNode node = getSingleExitFromLoop(curLoopBegin);
         FixedNode lastNode = null;
         // Find the last node after the exit blocks starts
         while (true) {
@@ -648,7 +627,6 @@ public abstract class LoopTransformations {
         IfNode mainLimit = mainLoop.getDuplicatedNode(preLimit);
         LogicNode ifTest = mainLimit.condition();
         CompareNode compareNode = (CompareNode) ifTest;
-        ValueNode ub = null;
         ValueNode prePhi = preIv.valueNode();
         ValueNode mainPhi = mainLoop.getDuplicatedNode(prePhi);
         ValueNode preStride = preIv.strideNode();
@@ -659,12 +637,16 @@ public abstract class LoopTransformations {
             mainStride = mainLoop.getDuplicatedNode(preStride);
         }
         // Fetch the bounds to pose lowering the range by one
+        ValueNode ub = null;
         if (compareNode.getX() == mainPhi) {
             ub = compareNode.getY();
         } else if (compareNode.getY() == mainPhi) {
             ub = compareNode.getX();
+        } else {
+            throw GraalError.shouldNotReachHere();
         }
-        // Make new limit one iteration
+
+        // Preloop always performs at least once iteration, so remove that from the main loop.
         ValueNode newLimit = sub(graph, ub, mainStride);
 
         // Re-wire the condition with the new limit
@@ -732,9 +714,12 @@ public abstract class LoopTransformations {
     }
 
     public static boolean isUnrollableLoop(LoopEx loop) {
-        LoopBeginNode curBeginNode = loop.loopBegin();
+        if (!loop.isCounted()) {
+            return false;
+        }
+        LoopBeginNode loopBegin = loop.loopBegin();
         boolean isCanonical = false;
-        if (curBeginNode.isMainLoop() || curBeginNode.isSimpleLoop()) {
+        if (loopBegin.isMainLoop() || loopBegin.isSimpleLoop()) {
             // Flow-less loops to partial unroll for now. 3 blocks corresponds to an if that either
             // exits or continues the loop. There might be fixed and floating work within the loop
             // as well.
@@ -745,7 +730,7 @@ public abstract class LoopTransformations {
         if (!isCanonical) {
             return false;
         }
-        for (ValuePhiNode phi : curBeginNode.valuePhis()) {
+        for (ValuePhiNode phi : loopBegin.valuePhis()) {
             InductionVariable iv = loop.getInductionVariables().get(phi);
             if (iv instanceof DerivedInductionVariable) {
                 return false;
@@ -754,7 +739,7 @@ public abstract class LoopTransformations {
                 if (!biv.isConstantStride()) {
                     return false;
                 }
-                if (phi.usages().filter(x -> curBeginNode.isPhiAtMerge(x)).isNotEmpty()) {
+                if (phi.usages().filter(x -> loopBegin.isPhiAtMerge(x)).isNotEmpty()) {
                     return false;
                 }
             } else {
